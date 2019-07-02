@@ -1,5 +1,6 @@
 library(shiny)
 library(dplyr)
+library(tuneR)  # required for AWS Polly
 
 # Package installation instruction from cloudyR github
 # install.packages("aws.iam", repos = c(cloudyr = "http://cloudyr.github.io/drat", 
@@ -9,6 +10,7 @@ library(dplyr)
 
 library(aws.iam)  # AWS Identity and Access Management
 library(aws.comprehend)
+library(aws.polly)
 
 ui <- fluidPage(
 
@@ -17,12 +19,12 @@ ui <- fluidPage(
     
     sidebarLayout(
         sidebarPanel(
-            textInput("awsKeyID", "AWS Access Key ID", value="Enter access key ID"),
-            passwordInput("awsSecretKey", "AWS Secret Acess Key", value="Enter secret access key"),
+            textInput("awsKeyID", "AWS Access Key ID", value=""),
+            passwordInput("awsSecretKey", "AWS Secret Acess Key", value=""),
             textInput("awsRegion", "AWS Default Region", value="us-east-1"),
             fluidRow(
                 splitLayout(
-                    cellWidths = c("5%", "30%", "50%"),
+                    cellWidths = c("2%", "30%", "50%"),
                     "",
                     actionButton("login", "Login"),
                     htmlOutput("loginMsgOutput")
@@ -33,9 +35,9 @@ ui <- fluidPage(
                         choices=c("AWS Comprehend", "AWS Polly"),
                         selected="AWS Comprehend"
             ),
-            selectInput("awsFunc", "Function type",
-                        choices=c("detect_language", "detect_sentiment"),
-                        selected="detect_language"),
+            uiOutput("awsFuncOutput"),
+            uiOutput("awsPollyLangOutput"),
+            uiOutput("awsPollyVoiceOutput"),
             textAreaInput("userInput", "Input text for evaluation", 
                           value="This is a French sentence."),
             actionButton("eval", "Evaluate"),
@@ -45,7 +47,7 @@ ui <- fluidPage(
         mainPanel(
             h3(strong("Results")),
             h3(textOutput("resultsTextOutput")),
-            tableOutput("resultsOutput"),
+            tableOutput("resultsTableOutput"),
             width=8  # out of 12
         )
     )
@@ -76,40 +78,79 @@ server <- function(input, output, session) {
                 )
             }
         )
-
     })
-            
+    
+    observe({
+        if (input$awsService == "AWS Comprehend") {
+            output$awsFuncOutput <- renderUI({
+                selectInput("awsFuncInput", "Function type",
+                            choices=c("detect_language", "detect_sentiment"),
+                            selected="detect_language")
+            })
+        }
+        else if (input$awsService == "AWS Polly") {
+            output$awsFuncOutput <- renderUI({
+                selectInput("awsFuncInput", "Function type",
+                            choices=c("synthesize"),
+                            selected="synthesize")
+            })
+            if (input$awsFuncInput == "synthesize") {
+                polly <- pollyHTTP(action="voices")[2]$Voices
+                output$awsPollyLangOutput <- renderUI({
+                    selectInput("awsPollyLangInput", "Select language",
+                                choices=sort(unique(polly$LanguageName)),
+                                selected="US English")
+                })
+                output$awsPollyVoiceOutput <- renderUI({
+                    # if statement to prevent initial error about empty results
+                    if (is.null(input$awsPollyLangInput)) {return(NULL)}
+                    voices <- (polly %>% filter(LanguageName == input$awsPollyLangInput))$Id
+                    selectInput("awsPollyVoiceInput", "Select voice",
+                                choices=sort(unique(voices)),
+                                selected=voices[1])
+                })
+            }
+        }
+    })
+    
 
     observeEvent(input$eval, {
+        output$resultsTextOutput <- NULL
+        output$resultsTableOutput <- NULL
         updateTextAreaInput(session, "userInput")
         
-        if (input$awsFunc == "detect_language") {
-            print("in detect_language")
-            langResults <- detect_language(isolate(input$userInput))
-            output$resultsOutput <- renderTable({
-                resultsTable <- matrix(c(langResults["LanguageCode"][,1],
-                                         langResults["Score"][,1]), ncol=2)
-                colnames(resultsTable) <- c("Language", "Score")
-                resultsTable
-            })
-            print("detect_language")
+        if (input$awsService == "AWS Comprehend") {
+            if (input$awsFuncInput == "detect_language") {
+                langResults <- detect_language(isolate(input$userInput))
+                output$resultsTableOutput <- renderTable({
+                    resultsTable <- matrix(c(langResults["LanguageCode"][,1],
+                                             langResults["Score"][,1]), ncol=2)
+                    colnames(resultsTable) <- c("Language", "Score")
+                    resultsTable
+                })
+            }
+            
+            else if (input$awsFuncInput == "detect_sentiment") {
+                senResults <- detect_sentiment(isolate(input$userInput))
+                output$resultsTextOutput <- renderText({
+                    paste("Sentiment is", toString(senResults["Sentiment"][,1]))
+                })
+                output$resultsTableOutput <- renderTable({
+                    resultsTable <- matrix(c("Mixed", senResults["Mixed"][,1],
+                                             "Negative", senResults["Negative"][,1],
+                                             "Neutral", senResults["Neutral"][,1],
+                                             "Positive", senResults["Positive"][,1]),
+                                           ncol=2, byrow=TRUE)
+                    colnames(resultsTable) <- c("Sentiment", "Score")
+                    resultsTable
+                })
+            }
         }
-
-        else if (input$awsFunc == "detect_sentiment") {
-            senResults <- detect_sentiment(isolate(input$userInput))
-            output$resultsTextOutput <- renderText({
-                paste("Sentiment is", toString(senResults["Sentiment"][,1]))
-            })
-            output$resultsOutput <- renderTable({
-                resultsTable <- matrix(c("Mixed", senResults["Mixed"][,1],
-                                         "Negative", senResults["Negative"][,1],
-                                         "Neutral", senResults["Neutral"][,1],
-                                         "Positive", senResults["Positive"][,1]),
-                                       ncol=2, byrow=TRUE)
-                colnames(resultsTable) <- c("Sentiment", "Score")
-                resultsTable
-            })
-            #print("detect_sentiment")
+        
+        else if (input$awsService == "AWS Polly") {
+            if (input$awsFuncInput == "synthesize") {
+                play(synthesize(input$userInput, voice=input$awsPollyVoiceInput))
+            }
         }
     })
 }
