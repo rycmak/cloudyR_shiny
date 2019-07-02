@@ -84,17 +84,17 @@ server <- function(input, output, session) {
         if (input$awsService == "AWS Comprehend") {
             output$awsFuncOutput <- renderUI({
                 selectInput("awsFuncInput", "Function type",
-                            choices=c("detect_language", "detect_sentiment"),
-                            selected="detect_language")
+                            choices=c("DetectDominantLanguage", "DetectSentiment"),
+                            selected="DetectDominantLanguage")
             })
         }
         else if (input$awsService == "AWS Polly") {
             output$awsFuncOutput <- renderUI({
                 selectInput("awsFuncInput", "Function type",
-                            choices=c("synthesize"),
-                            selected="synthesize")
+                            choices=c("SynthesizeSpeech"),
+                            selected="SynthesizeSpeech")
             })
-            if (input$awsFuncInput == "synthesize") {
+            if (input$awsFuncInput == "SynthesizeSpeech") {
                 polly <- pollyHTTP(action="voices")[2]$Voices
                 output$awsPollyLangOutput <- renderUI({
                     selectInput("awsPollyLangInput", "Select language",
@@ -120,7 +120,7 @@ server <- function(input, output, session) {
         updateTextAreaInput(session, "userInput")
         
         if (input$awsService == "AWS Comprehend") {
-            if (input$awsFuncInput == "detect_language") {
+            if (input$awsFuncInput == "DetectDominantLanguage") {
                 langResults <- detect_language(isolate(input$userInput))
                 output$resultsTableOutput <- renderTable({
                     resultsTable <- matrix(c(langResults["LanguageCode"][,1],
@@ -130,7 +130,7 @@ server <- function(input, output, session) {
                 })
             }
             
-            else if (input$awsFuncInput == "detect_sentiment") {
+            else if (input$awsFuncInput == "DetectSentiment") {
                 senResults <- detect_sentiment(isolate(input$userInput))
                 output$resultsTextOutput <- renderText({
                     paste("Sentiment is", toString(senResults["Sentiment"][,1]))
@@ -148,7 +148,7 @@ server <- function(input, output, session) {
         }
         
         else if (input$awsService == "AWS Polly") {
-            if (input$awsFuncInput == "synthesize") {
+            if (input$awsFuncInput == "SynthesizeSpeech") {
                 play(synthesize(input$userInput, voice=input$awsPollyVoiceInput))
             }
         }
