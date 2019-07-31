@@ -69,7 +69,7 @@ server <- function(input, output, session) {
     # Using googleAuthR library to authenticate instead:
     gar_auth_service(input$GoogleJSONFile$datapath)
     
-    # Load Cloud libraries
+    # Load Google Cloud libraries
     library("googleCloudVisionR")
     library("googleLanguageR")
   })
@@ -82,6 +82,7 @@ server <- function(input, output, session) {
       output$languageOutput <- NULL
       output$genderOutput <- NULL
       output$textOutput <- NULL
+      output$speechMsgOutput <- NULL
       
       output$dataFile <- renderUI({
         fileInput("imageFile", "Image file", 
@@ -118,8 +119,8 @@ server <- function(input, output, session) {
       output$maxNumResults <- NULL
       output$imageOutput <- NULL
       output$resultsTableOutput <- NULL
+      output$resultsMsgOutput <- NULL
       output$mapOutput <- NULL
-      
       
       # get list of available languages
       langs <- gl_talk_languages()$languageCodes
@@ -159,7 +160,7 @@ server <- function(input, output, session) {
     output$imageOutput <- renderImage(list(src=input$imageFile$datapath,
                                            height=height),
                                       delete=FALSE)
-    # clear previous results table and map
+    # clear previous results table, map, and messages
     output$resultsTableOutput <- NULL
     output$mapOutput <- NULL
     output$resultsMsgOutput <- NULL
@@ -167,9 +168,11 @@ server <- function(input, output, session) {
   
   
   observeEvent(input$eval,{
-    # if "Evaluation" button is pressed, clear previous results table and map
+    # if "Evaluation" button is pressed, clear previous results table, map, and messages
     output$resultsTableOutput <- NULL
     output$mapOutput <- NULL
+    output$resultsMsgOutput <- NULL
+    output$speechMsgOutput <- NULL
     
     if (input$GoogleService == "Cloud Vision") {
 
@@ -255,7 +258,7 @@ server <- function(input, output, session) {
         "Speech output to \"output.wav\""
       })
       soundObj <- readWave("output.wav")
-      play(soundObj)
+      tuneR::play(soundObj)  # adding tuneR:: to not be confused with imager::play()
     }
   })
 }
